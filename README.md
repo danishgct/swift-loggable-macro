@@ -54,19 +54,6 @@ func calculate(a: Int, b: Int) -> Int {
 - Xcode 15+
 - SwiftSyntax & SwiftSyntaxMacros packages
 
-### Add to Package.swift
-
-```swift
-.package(url: "https://github.com/apple/swift-syntax", from: "509.0.0"),
-```
-
-In your target:
-
-```swift
-.product(name: "SwiftSyntax", package: "swift-syntax"),
-.product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
-```
-
 ---
 
 ## 🛠️ How It Works
