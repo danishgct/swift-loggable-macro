@@ -43,6 +43,14 @@ func calculate(a: Int, b: Int) -> Int {
     return a + b
 }
 ```
+---
+
+```swift
+@loggable(logger: { print("LOG: \($0)") })
+func calculate(a: Int, b: Int) -> Int {
+    return a + b
+}
+```
 
 ---
 
