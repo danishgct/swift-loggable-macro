@@ -52,16 +52,52 @@ public struct LoggableMacro: BodyMacro {
         let functionName = funcDecl.name.text
         
         // Extract logger function from macro arguments (defaults to "print")
-        let loggerCall = extractLoggerName(from: node)
+        let loggerName = extractLoggerName(from: node)
         
         // Get the original function body statements
-        let originalStatements = funcDecl.body?.statements ?? CodeBlockItemListSyntax([])
+        guard let originalBody = funcDecl.body else {
+            return []
+        }
+
+        // Create entry and parameter logging statements
+        let entryLog = createEntryLogStatement(functionName: functionName, logger: loggerName)
+        let parameterLogs = createParameterPrintStatements(funcDecl: funcDecl, logger: loggerName)
+
+        // Create exit logging statement
+        let exitLog = createExitLogStatement(functionName: functionName, logger: loggerName)
+
+        // Check if the function has a return value
+        let returnType = funcDecl.signature.returnClause?.type
+        let returnsVoid = returnType?.as(IdentifierTypeSyntax.self)?.name.text == "Void" || returnType == nil
         
-        // Build the new function body with logging
-        return [
-            createEntryLogStatement(functionName: functionName, logger: loggerCall),
-            createExitLogStatement(functionName: functionName, logger: loggerCall)
-        ] + createParameterPrintStatements(funcDecl: funcDecl, logger: loggerCall) + Array(originalStatements)
+        if returnsVoid {
+            // If no return value, just inject logs
+            var newBody = [entryLog]
+            newBody.append(contentsOf: parameterLogs)
+            newBody.append(exitLog) // defer statement
+            newBody.append(contentsOf: Array(originalBody.statements))
+            return newBody
+        } else {
+            // If there is a return value, wrap the body to capture it
+            let closure: ExprSyntax = """
+            ({
+                \(originalBody.statements)
+            })()
+            """
+
+            let resultAssignment: StmtSyntax = "let result = \(closure)"
+            let logResult: StmtSyntax = "\(raw: loggerName)(\"Return value: \\(result)\")"
+            let returnStmt: StmtSyntax = "return result"
+
+            var newBody = [entryLog]
+            newBody.append(contentsOf: parameterLogs)
+            newBody.append(exitLog) // defer statement
+            newBody.append(CodeBlockItemSyntax(item: .stmt(resultAssignment)))
+            newBody.append(CodeBlockItemSyntax(item: .stmt(logResult)))
+            newBody.append(CodeBlockItemSyntax(item: .stmt(returnStmt)))
+
+            return newBody
+        }
     }
     
     // MARK: - Helper Methods
@@ -152,7 +188,7 @@ public struct LoggableMacro: BodyMacro {
             
             // Create interpolated string expression for parameter value
             let interpolatedString = """
-                "Parameter \(paramCounter) Name: \(paramName) = \\(\(paramName)) : of type : \(paramType)"
+                Parameter \(paramCounter) Name: \(paramName) = \\(\(paramName)) : of type : \(paramType)
                 """
             
             // Parse the interpolated string as an expression
