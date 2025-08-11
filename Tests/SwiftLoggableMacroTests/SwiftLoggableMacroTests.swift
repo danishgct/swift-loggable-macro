@@ -88,6 +88,34 @@ final class SwiftLoggableMacroTests: XCTestCase {
         )
     }
 
+    // Test case for a function with a closure logger
+    func testMacroWithClosureLogger() {
+        assertMacroExpansion(
+            """
+            @loggable(logger: { print("LOG: \\($0)") })
+            func multiply(a: Int, b: Int) -> Int {
+                return a * b
+            }
+            """,
+            expandedSource: """
+            func multiply(a: Int, b: Int) -> Int {
+                ({ print("LOG: \\($0)") })("Entering function: multiply")
+                ({ print("LOG: \\($0)") })("Parameter 1 Name: a = \\(a) : of type : Int")
+                ({ print("LOG: \\($0)") })("Parameter 2 Name: b = \\(b) : of type : Int")
+                defer {
+                    ({ print("LOG: \\($0)") })("Exiting function: multiply")
+                }
+                let result = ({
+                    return a * b
+                })()
+                ({ print("LOG: \\($0)") })("Return value: \\(result)")
+                return result
+            }
+            """,
+            macros: testMacros
+        )
+    }
+
     // Test case for a function with no parameters
     func testMacroOnFunctionWithNoParameters() {
         assertMacroExpansion(

@@ -52,7 +52,7 @@ public struct LoggableMacro: BodyMacro {
         let functionName = funcDecl.name.text
         
         // Extract logger function from macro arguments (defaults to "print")
-        let loggerName = extractLoggerName(from: node)
+        let loggerExpr = extractLoggerExpr(from: node)
         
         // Get the original function body statements
         guard let originalBody = funcDecl.body else {
@@ -60,11 +60,11 @@ public struct LoggableMacro: BodyMacro {
         }
 
         // Create entry and parameter logging statements
-        let entryLog = createEntryLogStatement(functionName: functionName, logger: loggerName)
-        let parameterLogs = createParameterPrintStatements(funcDecl: funcDecl, logger: loggerName)
+        let entryLog = createEntryLogStatement(functionName: functionName, logger: loggerExpr)
+        let parameterLogs = createParameterPrintStatements(funcDecl: funcDecl, logger: loggerExpr)
 
         // Create exit logging statement
-        let exitLog = createExitLogStatement(functionName: functionName, logger: loggerName)
+        let exitLog = createExitLogStatement(functionName: functionName, logger: loggerExpr)
 
         // Check if the function has a return value
         let returnType = funcDecl.signature.returnClause?.type
@@ -86,7 +86,17 @@ public struct LoggableMacro: BodyMacro {
             """
 
             let resultAssignment: StmtSyntax = "let result = \(closure)"
-            let logResult: StmtSyntax = "\(raw: loggerName)(\"Return value: \\(result)\")"
+            let logResultExpr = FunctionCallExprSyntax(
+                calledExpression: loggerExpr,
+                leftParen: .leftParenToken(),
+                arguments: LabeledExprListSyntax([
+                    LabeledExprSyntax(
+                        expression: StringLiteralExprSyntax(content: "Return value: \(result)")
+                    )
+                ]),
+                rightParen: .rightParenToken()
+            )
+            let logResult: StmtSyntax = StmtSyntax(ExpressionStmtSyntax(expression: ExprSyntax(logResultExpr)))
             let returnStmt: StmtSyntax = "return result"
 
             var newBody = [entryLog]
@@ -102,16 +112,16 @@ public struct LoggableMacro: BodyMacro {
     
     // MARK: - Helper Methods
     
-    /// Extracts the logger function or closure name from macro arguments.
+    /// Extracts the logger function or closure expression from macro arguments.
     /// - Parameter node: The attribute syntax node.
-    /// - Returns: The logger function or closure name (defaults to "print")
-    private static func extractLoggerName(from node: AttributeSyntax) -> String {
+    /// - Returns: The logger expression (defaults to `print`)
+    private static func extractLoggerExpr(from node: AttributeSyntax) -> ExprSyntax {
         guard case let .argumentList(arguments) = node.arguments,
               let firstArg = arguments.first else {
-            return "print"
+            return ExprSyntax(DeclReferenceExprSyntax(baseName: .identifier("print")))
         }
-        
-        return firstArg.expression.description.trimmingCharacters(in: .whitespaces)
+
+        return firstArg.expression
     }
     
     /// Creates the function entry logging statement.
@@ -119,11 +129,11 @@ public struct LoggableMacro: BodyMacro {
     ///   - functionName: Name of the function being logged.
     ///   - logger: Logger function or closure to use.
     /// - Returns: Code block item for entry logging
-    private static func createEntryLogStatement(functionName: String, logger: String) -> CodeBlockItemSyntax {
+    private static func createEntryLogStatement(functionName: String, logger: ExprSyntax) -> CodeBlockItemSyntax {
         return CodeBlockItemSyntax(
             item: .expr(ExprSyntax(
                 FunctionCallExprSyntax(
-                    calledExpression: DeclReferenceExprSyntax(baseName: .identifier(logger)),
+                    calledExpression: logger,
                     leftParen: .leftParenToken(),
                     arguments: LabeledExprListSyntax([
                         LabeledExprSyntax(
@@ -141,7 +151,7 @@ public struct LoggableMacro: BodyMacro {
     ///   - functionName: Name of the function being logged.
     ///   - logger: Logger function or closure to use.
     /// - Returns: Code block item for exit logging
-    private static func createExitLogStatement(functionName: String, logger: String) -> CodeBlockItemSyntax {
+    private static func createExitLogStatement(functionName: String, logger: ExprSyntax) -> CodeBlockItemSyntax {
         return CodeBlockItemSyntax(
             item: .stmt(StmtSyntax(
                 DeferStmtSyntax(
@@ -152,7 +162,7 @@ public struct LoggableMacro: BodyMacro {
                             CodeBlockItemSyntax(
                                 item: .expr(ExprSyntax(
                                     FunctionCallExprSyntax(
-                                        calledExpression: DeclReferenceExprSyntax(baseName: .identifier(logger)),
+                                        calledExpression: logger,
                                         leftParen: .leftParenToken(),
                                         arguments: LabeledExprListSyntax([
                                             LabeledExprSyntax(
@@ -176,7 +186,7 @@ public struct LoggableMacro: BodyMacro {
     ///   - funcDecl: The function declaration syntax.
     ///   - logger: Logger function or closure to use.
     /// - Returns: Array of code block items for parameter logging
-    private static func createParameterPrintStatements(funcDecl: FunctionDeclSyntax, logger: String) -> [CodeBlockItemSyntax] {
+    private static func createParameterPrintStatements(funcDecl: FunctionDeclSyntax, logger: ExprSyntax) -> [CodeBlockItemSyntax] {
         // Extract parameter names
         let params = funcDecl.signature.parameterClause.parameters
         var printStatements: [CodeBlockItemSyntax] = []
@@ -195,7 +205,7 @@ public struct LoggableMacro: BodyMacro {
             let printStmt = CodeBlockItemSyntax(
                 item: .expr(ExprSyntax(
                     FunctionCallExprSyntax(
-                        calledExpression: DeclReferenceExprSyntax(baseName: .identifier(logger)),
+                        calledExpression: logger,
                         leftParen: .leftParenToken(),
                         arguments: LabeledExprListSyntax([
                             LabeledExprSyntax(
